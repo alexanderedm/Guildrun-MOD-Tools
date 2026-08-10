@@ -61,6 +61,14 @@
       <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Guildrun.MOD.Core">
       <HintPath>..\Guildrun-MOD-Core\build\plugins\Guildrun.MOD.Core\Guildrun.MOD.Core.dll</HintPath>
       <Private>false</Private>

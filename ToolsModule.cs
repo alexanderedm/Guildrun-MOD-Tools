@@ -23,13 +23,14 @@ namespace GuildrunMODTools
         public bool ShowInfo = true;
 
         // 狀態
-        private bool _consoleOpen;
-        private string _input = "";
-        private List<string> _output = new();
-        private List<string> _history = new();
-        private int _historyIndex = -1;
+        public bool ConsoleOpen;
+        public string Input = "";
+        public List<string> Output = new();
+        public List<string> CommandHistory = new();
+        public int HistoryIndex = -1;
         private CommandRegistry _commands = new();
         private Vector2 _scrollPos;
+        private bool _inputFocused;
 
         // FPS
         private float _fps;
@@ -37,12 +38,17 @@ namespace GuildrunMODTools
         private int _fpsFrames;
         private float _fpsLastUpdate;
 
+        // 樣式
+        private GUIStyle _inputStyle;
+        private bool _stylesInit;
+
         protected override void OnInitialize()
         {
             RegisterCommands();
             Print("=== Guildrun MOD Tools 已啟動 ===");
-            Print("按 F1 開啟控制台");
-            Print("輸入 'help' 查看命令");
+            Print("按 F1 開啟/關閉控制台");
+            Print("輸入 'help' 查看所有命令");
+            Print("提示:控制台開啟時自動聚焦輸入框");
         }
 
         private void RegisterCommands()
@@ -60,6 +66,7 @@ namespace GuildrunMODTools
             _commands.Register("hp", "語法:hp <amount>", HpCommand);
             _commands.Register("stage", "顯示當前章節", StageCommand);
             _commands.Register("event", "語法:event <event_id>", EventCommand);
+            _commands.Register("modlist", "列出已載入模組", ModListCommand);
             _commands.Register("exit", "關閉控制台", ExitCommand);
             _commands.Register("quit", "關閉控制台", ExitCommand);
         }
@@ -77,53 +84,142 @@ namespace GuildrunMODTools
                 _fpsLastUpdate = Time.unscaledTime;
             }
 
-            // 切換
-            if (Input.GetKeyDown(ToggleKey))
+            // F1 切換
+            if (UnityEngine.Input.GetKeyDown(ToggleKey))
             {
-                _consoleOpen = !_consoleOpen;
-                if (_consoleOpen) _input = "";
-            }
-
-            // 開啟時處理輸入
-            if (_consoleOpen)
-            {
-                HandleInput();
+                ConsoleOpen = !ConsoleOpen;
+                if (ConsoleOpen)
+                {
+                    Input = "";
+                    HistoryIndex = CommandHistory.Count;
+                    _inputFocused = false; // 重新聚焦
+                }
             }
         }
 
-        private void HandleInput()
+        public override void OnGUI()
+        {
+            EnsureStyles();
+
+            // FPS 顯示
+            if (ShowFps)
+            {
+                var rect = new Rect(Screen.width - 130, 10, 120, 30);
+                GUI.Box(rect, $"FPS: {_fps:F1}");
+            }
+
+            // 控制台
+            if (ConsoleOpen)
+            {
+                DrawConsole();
+            }
+        }
+
+        private void DrawConsole()
+        {
+            var consoleRect = new Rect(50, 50, Screen.width - 100, Screen.height * 0.5f);
+
+            // 視窗背景
+            GUI.Box(consoleRect, "Guildrun Debug Console  [F1 關閉]");
+
+            // 內容區
+            GUILayout.BeginArea(new Rect(60, 80, consoleRect.width - 20, consoleRect.height - 60));
+
+            // === 輸出區 ===
+            _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(consoleRect.height - 100));
+
+            foreach (var line in Output)
+            {
+                GUILayout.Label(line);
+            }
+
+            GUILayout.EndScrollView();
+
+            // === 輸入區 ===
+            GUILayout.BeginHorizontal();
+
+            GUILayout.Label(">", GUILayout.Width(20));
+            GUI.SetNextControlName("ConsoleInput");
+            Input = GUILayout.TextField(Input, _inputStyle, GUILayout.ExpandWidth(true));
+
+            // 開啟時自動聚焦
+            if (!_inputFocused)
+            {
+                GUI.FocusControl("ConsoleInput");
+                _inputFocused = true;
+            }
+
+            // 處理按鍵事件(在 OnGUI 裡才能用 Event.current)
+            HandleKeyboardEvent();
+
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndArea();
+        }
+
+        private void HandleKeyboardEvent()
         {
             var e = Event.current;
+            if (e == null) return;
             if (e.type != EventType.KeyDown) return;
 
-            // 簡化版: Enter 執行
-            if (e.keyCode == KeyCode.Return && !string.IsNullOrEmpty(_input))
+            // 只在輸入框有焦點時處理
+            if (GUI.GetNameOfFocusedControl() != "ConsoleInput") return;
+
+            switch (e.keyCode)
             {
-                ExecuteCommand(_input);
-                _history.Add(_input);
-                _historyIndex = _history.Count;
-                _input = "";
-                e.Use();
+                case KeyCode.Return:
+                case KeyCode.KeypadEnter:
+                    if (!string.IsNullOrEmpty(Input.Trim()))
+                    {
+                        ExecuteCommand(Input.Trim());
+                        CommandHistory.Add(Input.Trim());
+                        HistoryIndex = CommandHistory.Count;
+                        Input = "";
+                        // 重新聚焦
+                        GUI.FocusControl("ConsoleInput");
+                        e.Use();
+                    }
+                    break;
+
+                case KeyCode.UpArrow:
+                    if (CommandHistory.Count > 0)
+                    {
+                        HistoryIndex = Math.Max(0, HistoryIndex - 1);
+                        Input = CommandHistory[HistoryIndex];
+                        // 重新聚焦避免跳掉
+                        GUI.FocusControl("ConsoleInput");
+                        e.Use();
+                    }
+                    break;
+
+                case KeyCode.DownArrow:
+                    if (CommandHistory.Count > 0)
+                    {
+                        HistoryIndex = Math.Min(CommandHistory.Count, HistoryIndex + 1);
+                        Input = HistoryIndex < CommandHistory.Count ? CommandHistory[HistoryIndex] : "";
+                        GUI.FocusControl("ConsoleInput");
+                        e.Use();
+                    }
+                    break;
+
+                case KeyCode.Escape:
+                    ConsoleOpen = false;
+                    e.Use();
+                    break;
             }
-            // 歷史記錄
-            else if (e.keyCode == KeyCode.UpArrow)
+        }
+
+        private void EnsureStyles()
+        {
+            if (_stylesInit) return;
+            _inputStyle = new GUIStyle(GUI.skin.textField)
             {
-                if (_history.Count > 0)
-                {
-                    _historyIndex = Math.Max(0, _historyIndex - 1);
-                    _input = _history[_historyIndex];
-                }
-                e.Use();
-            }
-            else if (e.keyCode == KeyCode.DownArrow)
-            {
-                if (_history.Count > 0)
-                {
-                    _historyIndex = Math.Min(_history.Count, _historyIndex + 1);
-                    _input = _historyIndex < _history.Count ? _history[_historyIndex] : "";
-                }
-                e.Use();
-            }
+                fontSize = 14,
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = Color.white },
+            };
+            _stylesInit = true;
         }
 
         private void ExecuteCommand(string cmd)
@@ -136,6 +232,7 @@ namespace GuildrunMODTools
             if (handler == null)
             {
                 PrintError($"未知命令: {parts[0]}");
+                Print("輸入 'help' 查看所有命令");
                 return;
             }
             try
@@ -148,45 +245,6 @@ namespace GuildrunMODTools
             }
         }
 
-        public override void OnGUI()
-        {
-            // FPS 顯示
-            if (ShowFps)
-            {
-                var rect = new Rect(Screen.width - 130, 10, 120, 30);
-                GUI.Box(rect, $"FPS: {_fps:F1}");
-            }
-
-            // 控制台
-            if (_consoleOpen)
-            {
-                var consoleRect = new Rect(50, 50, Screen.width - 100, Screen.height * 0.5f);
-                GUI.Box(consoleRect, "Guildrun Debug Console");
-
-                GUILayout.BeginArea(new Rect(60, 80, consoleRect.width - 20, consoleRect.height - 60));
-
-                // 輸出區
-                _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(consoleRect.height - 100));
-
-                foreach (var line in _output)
-                {
-                    GUILayout.Label(line);
-                }
-
-                GUILayout.EndScrollView();
-
-                // 輸入區
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(">", GUILayout.Width(20));
-                GUI.SetNextControlName("ConsoleInput");
-                _input = GUILayout.TextField(_input);
-                GUI.FocusControl("ConsoleInput");
-                GUILayout.EndHorizontal();
-
-                GUILayout.EndArea();
-            }
-        }
-
         // === 命令實作 ===
         private void HelpCommand(string[] args)
         {
@@ -195,9 +253,11 @@ namespace GuildrunMODTools
             {
                 Print($"  {cmd.Name,-12} {cmd.Description}");
             }
+            Print("");
+            Print("提示:輸入後按 Enter 執行,↑↓ 切換歷史");
         }
 
-        private void ClearCommand(string[] args) => _output.Clear();
+        private void ClearCommand(string[] args) => Output.Clear();
 
         private void VersionCommand(string[] args)
         {
@@ -284,41 +344,50 @@ namespace GuildrunMODTools
             Print($"✓ 触发事件: {args[1]} (示範)");
         }
 
+        private void ModListCommand(string[] args)
+        {
+            Print("=== 已載入模組 ===");
+            foreach (var mod in CorePlugin.Modules)
+            {
+                Print($"  • {mod.Name} v{mod.Version}");
+            }
+        }
+
         private void ExitCommand(string[] args)
         {
-            _consoleOpen = false;
+            ConsoleOpen = false;
         }
 
         // === 輸出 ===
         public void Print(string s)
         {
-            _output.Add($"<color=#FFFFFF>{s}</color>");
+            Output.Add($"<color=#FFFFFF>{s}</color>");
             TrimOutput();
         }
 
         public void PrintError(string s)
         {
-            _output.Add($"<color=#FF6060>{s}</color>");
+            Output.Add($"<color=#FF6060>{s}</color>");
             TrimOutput();
         }
 
         public void PrintWarning(string s)
         {
-            _output.Add($"<color=#FFB060>{s}</color>");
+            Output.Add($"<color=#FFB060>{s}</color>");
             TrimOutput();
         }
 
         public void PrintSuccess(string s)
         {
-            _output.Add($"<color=#60FF60>{s}</color>");
+            Output.Add($"<color=#60FF60>{s}</color>");
             TrimOutput();
         }
 
         private void TrimOutput()
         {
             const int MAX = 200;
-            if (_output.Count > MAX)
-                _output.RemoveRange(0, _output.Count - MAX);
+            if (Output.Count > MAX)
+                Output.RemoveRange(0, Output.Count - MAX);
             _scrollPos.y = float.MaxValue;
         }
     }
@@ -342,7 +411,7 @@ namespace GuildrunMODTools
             _cmds[name] = new Command { Name = name, Description = desc, Handler = handler };
         }
 
-        public Action<string[]>? Find(string name)
+        public Action<string[]> Find(string name)
         {
             return _cmds.TryGetValue(name, out var c) ? c.Handler : null;
         }
