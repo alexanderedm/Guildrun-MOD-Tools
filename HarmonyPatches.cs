@@ -135,4 +135,77 @@ namespace GuildrunMODTools
             }
         }
     }
+
+    /// <summary>
+    /// 攔截 GameRunScope.OnAwake/Awake - 在 RUN 創建時取得真正的 scope
+    /// </summary>
+    public static class GameRunScopeOnAwakePatch
+    {
+        public static void ApplyPatch()
+        {
+            try
+            {
+                var scopeType = GameReflection.GetIl2CppType(GameReflection.GAME_RUN_SCOPE);
+                if (scopeType == null) return;
+
+                MethodInfo method = null;
+                var names = new[] { "OnAwake", "Awake", "OnEnable" };
+                foreach (var n in names)
+                {
+                    method = scopeType.GetMethod(n, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (method != null)
+                    {
+                        Debug.Log($"[Tools] 找到 GameRunScope.{n}");
+                        break;
+                    }
+                }
+
+                if (method == null)
+                {
+                    var baseType = scopeType.BaseType;
+                    while (baseType != null)
+                    {
+                        foreach (var n in names)
+                        {
+                            method = baseType.GetMethod(n, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                            if (method != null)
+                            {
+                                Debug.Log($"[Tools] 找到 {baseType.Name}.{n}");
+                                break;
+                            }
+                        }
+                        if (method != null) break;
+                        baseType = baseType.BaseType;
+                    }
+                }
+
+                if (method == null)
+                {
+                    Debug.LogWarning("[Tools] 找不到 GameRunScope.Awake 方法");
+                    return;
+                }
+
+                var harmony = new HarmonyLib.Harmony("alexanderedm.guildrun.tools.scope.onawake");
+                harmony.Patch(method, new HarmonyMethod(typeof(GameRunScopeOnAwakePatch), nameof(Prefix)));
+                Debug.Log($"[Tools] ✓ 已套用 GameRunScope 補丁");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Tools] 套用 GameRunScope 補丁失敗: {ex.Message}");
+            }
+        }
+
+        public static void Prefix(object __instance)
+        {
+            try
+            {
+                if (__instance != null && CurrentGameRunScopeSetterPatch.CapturedScope == null)
+                {
+                    Debug.Log($"[Tools] ✓✓ 從 Awake 攔截到 GameRunScope = {__instance.GetType().FullName}");
+                    CurrentGameRunScopeSetterPatch.CapturedScope = __instance;
+                }
+            }
+            catch { }
+        }
+    }
 }

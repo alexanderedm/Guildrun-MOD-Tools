@@ -87,6 +87,7 @@ namespace GuildrunMODTools
             // 套用 Harmony 補丁
             CurrentGameRunScopeSetterPatch.ApplyPatch();
             ProgressionServiceRunStartedPatch.ApplyPatch();
+            GameRunScopeOnAwakePatch.ApplyPatch();
         }
 
         private void PrintBanner()
