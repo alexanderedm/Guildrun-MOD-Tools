@@ -74,12 +74,59 @@ namespace GuildrunMODTools
             RegisterCommands();
             PrintBanner();
             ScanGameTypes();
+
+            // 套用 Harmony 補丁
+            CurrentGameRunScopeSetterPatch.ApplyPatch();
         }
 
         private void ScanGameTypes()
         {
             // 初始化 GameReflection
             GameReflection.Initialize(_logger);
+
+            // 掃描所有組件找出含 CurrentGameRunScope 屬性的類型
+            Debug.Log("[Tools] ===== 開始深掃描 =====");
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    foreach (var t in asm.GetTypes())
+                    {
+                        if (t.Name.Length > 50 || t.FullName == null) continue;
+                        try
+                        {
+                            var prop = t.GetProperty("CurrentGameRunScope",
+                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance);
+                            if (prop != null)
+                            {
+                                Debug.Log($"[Tools] 🔍 {t.FullName}.CurrentGameRunScope (Static={prop.GetAccessors(true)[0].IsStatic})");
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+
+            // 直接掃描已知位置
+            Debug.Log("[Tools] 檢查 PersistenceData 類型");
+            var pdType = GameReflection.GetIl2CppType(GameReflection.PERSISTENCE_DATA);
+            if (pdType != null)
+            {
+                Debug.Log($"[Tools] ✓ PersistenceData: {pdType.FullName}");
+                foreach (var m in pdType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+                {
+                    if (m.DeclaringType == pdType)
+                    {
+                        Debug.Log($"[Tools]   {m.Name}");
+                    }
+                }
+            }
+
+            Debug.Log("[Tools] ===== 掃描結束 =====");
+
+            // 套用 Harmony 補丁
+            CurrentGameRunScopeSetterPatch.ApplyPatch();
         }
 
         private void PrintBanner()

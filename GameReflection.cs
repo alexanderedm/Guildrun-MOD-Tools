@@ -21,12 +21,14 @@ namespace GuildrunMODTools
         public const string GAME_RUN_SCOPE = "Ember.Scopes.GameRun.GameRunScope";
         public const string PLAYER_DATA_DTO = "Ember.Scopes.GameRun.Persistence.Data.DTOs.GameRun.V1.PlayerDataSaveDto";
         public const string PLAYER_DATA = "Ember.Scopes.GameRun.Player.Data.PlayerData";
+        public const string PERSISTENCE_DATA = "Ember.Scopes.Application.Persistence.Data.PersistenceData";
 
         private static ManualLogSource _log;
         private static Type _progServiceType;
         private static Type _playerDataType;
         private static Type _playerDataDtoType;
         private static Type _gameRunScopeType;
+        private static Type _persistenceDataType;
 
         public static void Initialize(ManualLogSource log)
         {
@@ -35,6 +37,7 @@ namespace GuildrunMODTools
             _playerDataType = GetIl2CppType(PLAYER_DATA);
             _playerDataDtoType = GetIl2CppType(PLAYER_DATA_DTO);
             _gameRunScopeType = GetIl2CppType(GAME_RUN_SCOPE);
+            _persistenceDataType = GetIl2CppType(PERSISTENCE_DATA);
         }
 
         public static Type GetIl2CppType(string fullName)
@@ -52,43 +55,70 @@ namespace GuildrunMODTools
         }
 
         /// <summary>
-        /// 取得當前 GameRunScope 實例(透過靜態屬性)
+        /// 透過任何方法尋找 GameRunScope 實例
         /// </summary>
-        public static object GetCurrentGameRunScope()
+        public static object FindGameRunScope()
         {
+            // 優先使用 Harmony 攔截到的
+            if (CurrentGameRunScopeSetterPatch.CapturedScope != null)
+                return CurrentGameRunScopeSetterPatch.CapturedScope;
+
             if (_gameRunScopeType == null) return null;
 
             try
             {
-                // 找靜態 CurrentGameRunScope 屬性
-                var prop = _gameRunScopeType.GetProperty("CurrentGameRunScope",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
-                if (prop != null)
+                // 方法 1: 找 GameRunMetadata 實例
+                var metaType = GetIl2CppType("Ember.Scopes.Application.Persistence.Data.GameRunMetadata");
+                if (metaType != null)
                 {
-                    return prop.GetValue(null);
+                    // 找 GameRunMetadata 實例(透過 VContainer 不知道)
+                    // 改用:列舉所有 GameObject,檢查內部 SubContainer
+                    var allGos = Resources.FindObjectsOfTypeAll<GameObject>();
+                    foreach (var go in allGos)
+                    {
+                        if (go == null) continue;
+                        var comps = go.GetComponentsInChildren<Behaviour>(true);
+                        foreach (var c in comps)
+                        {
+                            if (c == null) continue;
+                            // 透過 VContainer 取得
+                            var cType = c.GetType();
+                            var containerProp = cType.GetProperty("Container");
+                            if (containerProp != null) { /* skip */ }
+                        }
+                    }
                 }
 
-                // 找靜態欄位
-                var field = _gameRunScopeType.GetField("CurrentGameRunScope",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
-                if (field != null)
+                // 方法 2: 列舉所有 GameObject,檢查 GameRunScope 元件
+                var allGos2 = Resources.FindObjectsOfTypeAll<GameObject>();
+                foreach (var go in allGos2)
                 {
-                    return field.GetValue(null);
-                }
-
-                // 找 CurrentGameRunScope (k__BackingField)
-                var backing = _gameRunScopeType.GetField("<CurrentGameRunScope>k__BackingField",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
-                if (backing != null)
-                {
-                    return backing.GetValue(null);
+                    if (go == null) continue;
+                    var comps = go.GetComponents<Component>();
+                    foreach (var c in comps)
+                    {
+                        if (c == null) continue;
+                        if (_gameRunScopeType.IsInstanceOfType(c))
+                        {
+                            Debug.Log($"[Tools] ✓ 在 {go.name} 找到 GameRunScope");
+                            return c;
+                        }
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Tools] GetCurrentGameRunScope: {ex.Message}");
+                Debug.LogWarning($"[Tools] FindGameRunScope: {ex.Message}");
             }
             return null;
+        }
+
+        /// <summary>
+        /// 取得當前 GameRunScope 實例(向下相容)
+        /// </summary>
+        public static object GetCurrentGameRunScope()
+        {
+            return FindGameRunScope();
         }
 
         /// <summary>
@@ -187,6 +217,45 @@ namespace GuildrunMODTools
                 Debug.LogError($"[Tools] SetGold 失敗: {ex.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 透過 GameRunScope 的 VContainer 取得 PlayerData
+        /// </summary>
+        public static object GetPlayerDataViaVContainer(object gameRunScope)
+        {
+            if (gameRunScope == null) return null;
+
+            try
+            {
+                var type = gameRunScope.GetType();
+                var containerProp = type.GetProperty("Container",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (containerProp == null) return null;
+
+                var container = containerProp.GetValue(gameRunScope);
+                if (container == null) return null;
+
+                // VContainer 的 Resolve<T>
+                var resolveGeneric = container.GetType().GetMethod("Resolve", new Type[0]);
+                if (resolveGeneric != null && _playerDataType != null)
+                {
+                    var generic = resolveGeneric.MakeGenericMethod(_playerDataType);
+                    return generic.Invoke(container, null);
+                }
+
+                // 非泛型 Resolve
+                var resolve = container.GetType().GetMethod("Resolve", new[] { typeof(Type) });
+                if (resolve != null && _playerDataType != null)
+                {
+                    return resolve.Invoke(container, new object[] { _playerDataType });
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Tools] GetPlayerDataViaVContainer: {ex.Message}");
+            }
+            return null;
         }
 
         public static int GetCurrentGold()
