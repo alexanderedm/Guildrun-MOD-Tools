@@ -8,6 +8,9 @@ namespace GuildrunMODTools
 {
     /// <summary>
     /// 工作台模組 - 除錯控制台與測試工具
+    ///
+    /// 注意:由於 Unity 6 + 新 Input System 下 GUI.TextField 經常無法接收鍵盤,
+    /// 本模組改用 Input.GetKeyDown 直接輪詢每個按鍵。
     /// </summary>
     public class ToolsModule : ModuleBase
     {
@@ -20,17 +23,15 @@ namespace GuildrunMODTools
         public bool ConsoleEnabled = true;
         public KeyCode ToggleKey = KeyCode.F1;
         public bool ShowFps = true;
-        public bool ShowInfo = true;
 
         // 狀態
         public bool ConsoleOpen;
         public string Input = "";
         public List<string> Output = new();
         public List<string> CommandHistory = new();
-        public int HistoryIndex = -1;
+        public int HistoryIndex;
         private CommandRegistry _commands = new();
         private Vector2 _scrollPos;
-        private bool _inputFocused;
 
         // FPS
         private float _fps;
@@ -42,13 +43,45 @@ namespace GuildrunMODTools
         private GUIStyle _inputStyle;
         private bool _stylesInit;
 
+        // 按鍵輪詢 - 避免重複觸發
+        private readonly HashSet<KeyCode> _keysDown = new();
+
+        // 已輪詢的字母鍵盤
+        private static readonly KeyCode[] LetterKeys = {
+            KeyCode.A, KeyCode.B, KeyCode.C, KeyCode.D, KeyCode.E, KeyCode.F, KeyCode.G, KeyCode.H,
+            KeyCode.I, KeyCode.J, KeyCode.K, KeyCode.L, KeyCode.M, KeyCode.N, KeyCode.O, KeyCode.P,
+            KeyCode.Q, KeyCode.R, KeyCode.S, KeyCode.T, KeyCode.U, KeyCode.V, KeyCode.W, KeyCode.X,
+            KeyCode.Y, KeyCode.Z,
+        };
+
+        private static readonly KeyCode[] NumberKeys = {
+            KeyCode.Alpha0, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4,
+            KeyCode.Alpha5, KeyCode.Alpha6, KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9,
+        };
+
+        // 符號對映
+        private static readonly Dictionary<KeyCode, string> SymbolMap = new()
+        {
+            { KeyCode.Space, " " },
+            { KeyCode.Minus, "-" },
+            { KeyCode.Equals, "=" },
+            { KeyCode.LeftBracket, "[" },
+            { KeyCode.RightBracket, "]" },
+            { KeyCode.Backslash, "\\" },
+            { KeyCode.Semicolon, ";" },
+            { KeyCode.Quote, "'" },
+            { KeyCode.Comma, "," },
+            { KeyCode.Period, "." },
+            { KeyCode.Slash, "/" },
+            { KeyCode.BackQuote, "`" },
+        };
+
         protected override void OnInitialize()
         {
             RegisterCommands();
             Print("=== Guildrun MOD Tools 已啟動 ===");
             Print("按 F1 開啟/關閉控制台");
             Print("輸入 'help' 查看所有命令");
-            Print("提示:控制台開啟時自動聚焦輸入框");
         }
 
         private void RegisterCommands()
@@ -84,7 +117,7 @@ namespace GuildrunMODTools
                 _fpsLastUpdate = Time.unscaledTime;
             }
 
-            // F1 切換
+            // F1 切換(toggle)
             if (UnityEngine.Input.GetKeyDown(ToggleKey))
             {
                 ConsoleOpen = !ConsoleOpen;
@@ -92,10 +125,119 @@ namespace GuildrunMODTools
                 {
                     Input = "";
                     HistoryIndex = CommandHistory.Count;
-                    _inputFocused = false; // 重新聚焦
                 }
             }
+
+            // 控制台開啟時輪詢鍵盤輸入
+            if (ConsoleOpen)
+            {
+                PollKeyboard();
+            }
         }
+
+        /// <summary>
+        /// 直接輪詢每個按鍵,完全繞過 GUI.TextField
+        /// </summary>
+        private void PollKeyboard()
+        {
+            // Shift 偵測
+            bool shift = UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift);
+
+            // 字母
+            foreach (var k in LetterKeys)
+            {
+                if (UnityEngine.Input.GetKeyDown(k))
+                {
+                    char c = k.ToString()[0];
+                    Input += shift ? c : char.ToLowerInvariant(c);
+                }
+            }
+
+            // 數字
+            foreach (var k in NumberKeys)
+            {
+                if (UnityEngine.Input.GetKeyDown(k))
+                {
+                    int digit = (int)k - (int)KeyCode.Alpha0;
+                    Input += shift ? ShiftDigit(digit) : digit.ToString();
+                }
+            }
+
+            // 符號
+            foreach (var kv in SymbolMap)
+            {
+                if (UnityEngine.Input.GetKeyDown(kv.Key))
+                {
+                    string s = kv.Value;
+                    if (shift) s = ShiftSymbol(s);
+                    Input += s;
+                }
+            }
+
+            // Backspace
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Backspace) && Input.Length > 0)
+            {
+                Input = Input.Substring(0, Input.Length - 1);
+            }
+
+            // Enter - 執行
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Return) || UnityEngine.Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (!string.IsNullOrEmpty(Input.Trim()))
+                {
+                    ExecuteCommand(Input.Trim());
+                    CommandHistory.Add(Input.Trim());
+                    HistoryIndex = CommandHistory.Count;
+                }
+                Input = "";
+            }
+
+            // 上下鍵 - 歷史
+            if (UnityEngine.Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                if (CommandHistory.Count > 0)
+                {
+                    HistoryIndex = Math.Max(0, HistoryIndex - 1);
+                    Input = CommandHistory[HistoryIndex];
+                }
+            }
+            if (UnityEngine.Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                if (CommandHistory.Count > 0)
+                {
+                    HistoryIndex = Math.Min(CommandHistory.Count, HistoryIndex + 1);
+                    Input = HistoryIndex < CommandHistory.Count ? CommandHistory[HistoryIndex] : "";
+                }
+            }
+
+            // Esc - 關閉
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape))
+            {
+                ConsoleOpen = false;
+            }
+
+            // Ctrl+L - 清除
+            if (UnityEngine.Input.GetKeyDown(KeyCode.L) &&
+                (UnityEngine.Input.GetKey(KeyCode.LeftControl) || UnityEngine.Input.GetKey(KeyCode.RightControl)))
+            {
+                Output.Clear();
+            }
+        }
+
+        private static string ShiftDigit(int d) => d switch
+        {
+            0 => ")", 1 => "!", 2 => "@", 3 => "#", 4 => "$",
+            5 => "%", 6 => "^", 7 => "&", 8 => "*", 9 => "(",
+            _ => d.ToString(),
+        };
+
+        private static string ShiftSymbol(string s) => s switch
+        {
+            "-" => "_", "=" => "+", "[" => "{", "]" => "}",
+            "\\" => "|", ";" => ":", "'" => "\"", "," => "<",
+            "." => ">", "/" => "?", "`" => "~",
+            _ => s,
+        };
 
         public override void OnGUI()
         {
@@ -118,106 +260,38 @@ namespace GuildrunMODTools
         private void DrawConsole()
         {
             var consoleRect = new Rect(50, 50, Screen.width - 100, Screen.height * 0.5f);
-
-            // 視窗背景
             GUI.Box(consoleRect, "Guildrun Debug Console  [F1 關閉]");
 
-            // 內容區
-            GUILayout.BeginArea(new Rect(60, 80, consoleRect.width - 20, consoleRect.height - 60));
+            // 直接用 Rect + GUI.Label 顯示,不用 BeginScrollView
+            float y = 85;
+            float maxY = consoleRect.height - 50;
+            int maxLines = 30;
+            int startIdx = Math.Max(0, Output.Count - maxLines);
 
-            // === 輸出區 ===
-            _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(consoleRect.height - 100));
-
-            foreach (var line in Output)
+            for (int i = startIdx; i < Output.Count; i++)
             {
-                GUILayout.Label(line);
+                // 移除 rich text 避免解析錯誤
+                string line = Output[i].Replace("<color=#FFFFFF>", "").Replace("<color=#FF6060>", "").Replace("<color=#FFB060>", "").Replace("<color=#60FF60>", "").Replace("</color>", "");
+                GUI.Label(new Rect(60, y, consoleRect.width - 20, 20), line);
+                y += 18;
+                if (y > 85 + maxY - 40) break;
             }
 
-            GUILayout.EndScrollView();
-
-            // === 輸入區 ===
-            GUILayout.BeginHorizontal();
-
-            GUILayout.Label(">", GUILayout.Width(20));
-            GUI.SetNextControlName("ConsoleInput");
-            Input = GUILayout.TextField(Input, _inputStyle, GUILayout.ExpandWidth(true));
-
-            // 開啟時自動聚焦
-            if (!_inputFocused)
-            {
-                GUI.FocusControl("ConsoleInput");
-                _inputFocused = true;
-            }
-
-            // 處理按鍵事件(在 OnGUI 裡才能用 Event.current)
-            HandleKeyboardEvent();
-
-            GUILayout.EndHorizontal();
-
-            GUILayout.EndArea();
-        }
-
-        private void HandleKeyboardEvent()
-        {
-            var e = Event.current;
-            if (e == null) return;
-            if (e.type != EventType.KeyDown) return;
-
-            // 只在輸入框有焦點時處理
-            if (GUI.GetNameOfFocusedControl() != "ConsoleInput") return;
-
-            switch (e.keyCode)
-            {
-                case KeyCode.Return:
-                case KeyCode.KeypadEnter:
-                    if (!string.IsNullOrEmpty(Input.Trim()))
-                    {
-                        ExecuteCommand(Input.Trim());
-                        CommandHistory.Add(Input.Trim());
-                        HistoryIndex = CommandHistory.Count;
-                        Input = "";
-                        // 重新聚焦
-                        GUI.FocusControl("ConsoleInput");
-                        e.Use();
-                    }
-                    break;
-
-                case KeyCode.UpArrow:
-                    if (CommandHistory.Count > 0)
-                    {
-                        HistoryIndex = Math.Max(0, HistoryIndex - 1);
-                        Input = CommandHistory[HistoryIndex];
-                        // 重新聚焦避免跳掉
-                        GUI.FocusControl("ConsoleInput");
-                        e.Use();
-                    }
-                    break;
-
-                case KeyCode.DownArrow:
-                    if (CommandHistory.Count > 0)
-                    {
-                        HistoryIndex = Math.Min(CommandHistory.Count, HistoryIndex + 1);
-                        Input = HistoryIndex < CommandHistory.Count ? CommandHistory[HistoryIndex] : "";
-                        GUI.FocusControl("ConsoleInput");
-                        e.Use();
-                    }
-                    break;
-
-                case KeyCode.Escape:
-                    ConsoleOpen = false;
-                    e.Use();
-                    break;
-            }
+            // 輸入列
+            string cursor = Time.unscaledTime % 1.0f < 0.5f ? "_" : " ";
+            string inputLine = "> " + Input + cursor;
+            GUI.Label(new Rect(60, consoleRect.height - 5, consoleRect.width - 20, 25), inputLine, _inputStyle);
         }
 
         private void EnsureStyles()
         {
             if (_stylesInit) return;
-            _inputStyle = new GUIStyle(GUI.skin.textField)
+            _inputStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 14,
+                fontSize = 16,
                 alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = Color.white },
+                normal = { textColor = new Color(0.9f, 0.95f, 1f) },
+                fontStyle = FontStyle.Bold,
             };
             _stylesInit = true;
         }
@@ -254,7 +328,7 @@ namespace GuildrunMODTools
                 Print($"  {cmd.Name,-12} {cmd.Description}");
             }
             Print("");
-            Print("提示:輸入後按 Enter 執行,↑↓ 切換歷史");
+            Print("提示:直接打字輸入,Enter 執行,↑↓ 歷史,Esc 關閉");
         }
 
         private void ClearCommand(string[] args) => Output.Clear();
@@ -353,10 +427,7 @@ namespace GuildrunMODTools
             }
         }
 
-        private void ExitCommand(string[] args)
-        {
-            ConsoleOpen = false;
-        }
+        private void ExitCommand(string[] args) => ConsoleOpen = false;
 
         // === 輸出 ===
         public void Print(string s)
