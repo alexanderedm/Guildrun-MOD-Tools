@@ -1,6 +1,9 @@
 using GuildrunMODCore;
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using UnityEngine;
 
 namespace GuildrunMODTools
@@ -70,6 +73,13 @@ namespace GuildrunMODTools
         {
             RegisterCommands();
             PrintBanner();
+            ScanGameTypes();
+        }
+
+        private void ScanGameTypes()
+        {
+            // 初始化 GameReflection
+            GameReflection.Initialize(_logger);
         }
 
         private void PrintBanner()
@@ -523,7 +533,18 @@ namespace GuildrunMODTools
         private void GoldCommand(string[] args)
         {
             if (args.Length < 2) { Print("用法: gold <數值> (範例: gold 9999)"); return; }
-            if (int.TryParse(args[1], out var v)) PrintSuccess($"✓ 金幣設定為 {v}");
+            if (int.TryParse(args[1], out var v))
+            {
+                if (GameReflection.SetGold(v))
+                    PrintSuccess($"✓ Shards 設定為 {v}");
+                else
+                {
+                    PrintError("✗ 設定失敗!");
+                    Print("  提示1:請先開始一個 RUN(進入戰鬥畫面)");
+                    Print("  提示2:遊戲中稱為 Shards(碎片),不是 Gold");
+                    Print("  提示3:輸出視窗的提示訊息會說明細節");
+                }
+            }
             else PrintError($"'{args[1]}' 不是數字");
         }
 

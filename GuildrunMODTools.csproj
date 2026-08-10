@@ -12,7 +12,7 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>build\plugins\Guildrun.Modules\</OutputPath>
     <Description>Guildrun Demo 工作台模組 - 除錯控制台與測試工具</Description>
-    <Version>0.1.0</Version>
+    <Version>0.3.0</Version>
     <Authors>edmun</Authors>
   </PropertyGroup>
 
@@ -67,6 +67,10 @@
     </Reference>
     <Reference Include="UnityEngine.UIModule">
       <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Guildrun.MOD.Core">
