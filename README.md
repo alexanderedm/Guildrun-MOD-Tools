@@ -47,6 +47,23 @@ Guildrun Demo 的工作台模組,提供除錯控制台與測試工具。
 
 歡迎貢獻!如需新增命令,編輯 `ToolsModule.cs` 中的 `RegisterCommands()` 與 `ExecuteCommand()`。
 
+## 備註
+
+此模組的「一鍵按鈕」中,**只有 Shards (金幣) 已驗證可運作**(透過 HarmonyX 攔截 `GameRunScope.Awake`)。
+其他按鈕 (HP、難度、遺物等) 仍是 mock 輸出,實作需更多 reflection 修正。
+
+如果想實際修改遊戲資料,**更可靠的方式**是使用:
+👉 [Guildrun-SaveEditor](https://github.com/alexanderedm/Guildrun-SaveEditor) — 直接讀寫存檔,100% 可靠
+
+## 🌐 Guildrun MOD 生態系
+
+| 倉庫 | 用途 |
+|---|---|
+| [Guildrun-MOD-Core](https://github.com/alexanderedm/Guildrun-MOD-Core) | 模組核心 (必須) |
+| [Guildrun-MOD-TraditionalChinese](https://github.com/alexanderedm/Guildrun-MOD-TraditionalChinese) | 繁中補強 |
+| [Guildrun-MOD-Tools](https://github.com/alexanderedm/Guildrun-MOD-Tools) ← 本倉庫 | 遊戲內控制台 |
+| [Guildrun-SaveEditor](https://github.com/alexanderedm/Guildrun-SaveEditor) | **Python 存檔編輯器** |
+
 ## 授權
 
 MIT
