@@ -3,7 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
+    <Nullable>disable</Nullable>
+    <NoWarn>CS8632;CS8600;CS8602;CS8603;CS8604;CS8618;CS8625</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>GuildrunMODTools</RootNamespace>
     <AssemblyName>Guildrun.MOD.Tools</AssemblyName>
@@ -38,6 +39,26 @@
     </Reference>
     <Reference Include="0Harmony">
       <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>D:\steam\steamapps\common\Guildrun Demo\BepInEx\interop\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Guildrun.MOD.Core">
